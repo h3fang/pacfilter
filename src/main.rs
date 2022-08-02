@@ -58,13 +58,13 @@ fn show_all_logs() {
 
 fn filter_logs(keyword: &str, max_entries: usize) {
     let logs = read_to_string(LOG_FILE).unwrap();
-    let re = Regex::new(&format!(r"(.*)\b{keyword}\s+(\S+)\s+(\([^)]+\).*)")).unwrap();
+    let re = Regex::new(&format!(r"\[(.*)\] \[ALPM\] {keyword} (\S+) (.*)")).unwrap();
     let lock = io::stdout().lock();
     let mut buf = BufWriter::new(lock);
     for caps in re.captures_iter(&logs).take(max_entries) {
         let _ = writeln!(
             buf,
-            "{}{keyword} {} {}",
+            "{} {keyword} {} {}",
             &caps[1],
             &caps[2].bright_green(),
             &caps[3]
@@ -86,7 +86,7 @@ fn explicitly_installed(max_entries: usize) {
         .collect::<HashSet<_>>();
 
     let logs = read_to_string(LOG_FILE).unwrap();
-    let re = Regex::new(r"(.*)\binstalled\s+(\S+)\s+(\([^)]+\).*)").unwrap();
+    let re = Regex::new(r"\[(.*)\] \[ALPM\] installed (\S+) (.*)").unwrap();
 
     let mut outputs = Vec::new();
 
@@ -97,7 +97,7 @@ fn explicitly_installed(max_entries: usize) {
         if let Some(caps) = re.captures(line) {
             if explicit_pkgs.contains(&caps[2]) {
                 outputs.push(format!(
-                    "{}installed {} {}",
+                    "{} installed {} {}",
                     &caps[1],
                     &caps[2].bright_green(),
                     &caps[3]
