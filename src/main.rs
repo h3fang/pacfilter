@@ -58,7 +58,7 @@ fn show_all_logs() {
 
 fn filter_logs(keyword: &str, max_entries: usize) {
     let logs = read_to_string(LOG_FILE).unwrap();
-    let re = Regex::new(&format!(r"\[(.*)\] \[ALPM\] {keyword} (\S+) (.*)")).unwrap();
+    let re = Regex::new(&format!(r"(?m)^\[(.*)\] \[ALPM\] {keyword} (\S+) (.*)$")).unwrap();
     let lock = io::stdout().lock();
     let mut buf = BufWriter::new(lock);
     for caps in re.captures_iter(&logs).take(max_entries) {
