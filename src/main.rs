@@ -72,7 +72,7 @@ fn filter_logs(keyword: &str, max_entries: usize) {
     }
 }
 
-fn explicitly_installed(mut max_entries: usize) {
+fn explicitly_installed(max_entries: usize) {
     let mut explicit_pkgs = Command::new("pacman")
         .args(["-Qqe"])
         .output()
@@ -88,26 +88,30 @@ fn explicitly_installed(mut max_entries: usize) {
     let logs = read_to_string(LOG_FILE).unwrap();
     let re = Regex::new(r"(.*)\binstalled\s+(\S+)\s+(\([^)]+\).*)").unwrap();
 
-    let lock = io::stdout().lock();
-    let mut buf = BufWriter::new(lock);
+    let mut outputs = Vec::new();
 
     for line in logs.lines().rev() {
-        if max_entries == 0 {
+        if outputs.len() == max_entries {
             break;
         }
         if let Some(caps) = re.captures(line) {
             if explicit_pkgs.contains(&caps[2]) {
-                let _ = writeln!(
-                    buf,
+                outputs.push(format!(
                     "{}installed {} {}",
                     &caps[1],
                     &caps[2].bright_green(),
                     &caps[3]
-                );
-                max_entries -= 1;
+                ));
                 explicit_pkgs.remove(&caps[2]);
             }
         }
+    }
+
+    let lock = io::stdout().lock();
+    let mut buf = BufWriter::new(lock);
+
+    for line in outputs.into_iter().rev() {
+        let _ = writeln!(buf, "{line}");
     }
 }
 
