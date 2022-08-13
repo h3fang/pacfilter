@@ -1,5 +1,6 @@
+use std::fs::read_to_string;
 use std::io::{self, BufRead, BufWriter, Write};
-use std::{fs::read_to_string, process::Command};
+use std::process::Command;
 
 use ahash::AHashSet as HashSet;
 use clap::{ArgEnum, Parser};
@@ -11,7 +12,7 @@ const LOG_FILE: &str = "/var/log/pacman.log";
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    /// Maximum number of entries to list
+    /// Maximum number of most recent lines to output
     #[clap(short, long, value_parser, default_value_t = usize::MAX)]
     n: usize,
 
@@ -58,18 +59,25 @@ fn show_all_logs() {
 
 fn filter_logs(keyword: &str, max_entries: usize) {
     let logs = read_to_string(LOG_FILE).unwrap();
-    let re = Regex::new(&format!(r"(?m)^\[(.*)\] \[ALPM\] {keyword} (\S+) (.*)$")).unwrap();
+    let re = Regex::new(&format!(r"^\[(.*)\] \[ALPM\] {keyword} (\S+) (.*)$")).unwrap();
     let lock = io::stdout().lock();
     let mut buf = BufWriter::new(lock);
-    for caps in re.captures_iter(&logs).take(max_entries) {
-        let _ = writeln!(
-            buf,
-            "{} {keyword} {} {}",
-            &caps[1],
-            &caps[2].bright_green(),
-            &caps[3]
-        );
-    }
+    logs.lines()
+        .rev()
+        .filter_map(|line| re.captures(line))
+        .take(max_entries)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .for_each(|caps| {
+            let _ = writeln!(
+                buf,
+                "{} {keyword} {} {}",
+                &caps[1],
+                &caps[2].bright_green(),
+                &caps[3]
+            );
+        });
 }
 
 fn explicitly_installed(max_entries: usize) {
@@ -88,31 +96,34 @@ fn explicitly_installed(max_entries: usize) {
     let logs = read_to_string(LOG_FILE).unwrap();
     let re = Regex::new(r"\[(.*)\] \[ALPM\] installed (\S+) (.*)").unwrap();
 
-    let mut outputs = Vec::new();
-
-    for line in logs.lines().rev() {
-        if outputs.len() == max_entries {
-            break;
-        }
-        if let Some(caps) = re.captures(line) {
-            if explicit_pkgs.contains(&caps[2]) {
-                outputs.push(format!(
-                    "{} installed {} {}",
-                    &caps[1],
-                    &caps[2].bright_green(),
-                    &caps[3]
-                ));
-                explicit_pkgs.remove(&caps[2]);
-            }
-        }
-    }
-
     let lock = io::stdout().lock();
     let mut buf = BufWriter::new(lock);
-
-    for line in outputs.into_iter().rev() {
-        let _ = writeln!(buf, "{line}");
-    }
+    logs.lines()
+        .rev()
+        .filter_map(|line| {
+            re.captures(line).map(|caps| {
+                if explicit_pkgs.contains(&caps[2]) {
+                    explicit_pkgs.remove(&caps[2]);
+                    Some(caps)
+                } else {
+                    None
+                }
+            })
+        })
+        .flatten()
+        .take(max_entries)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .for_each(|caps| {
+            let _ = writeln!(
+                buf,
+                "{} installed {} {}",
+                &caps[1],
+                &caps[2].bright_green(),
+                &caps[3]
+            );
+        });
 }
 
 #[cfg(test)]
