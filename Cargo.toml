@@ -9,7 +9,7 @@ edition = "2021"
 clap = { version = "3", features = ["derive"] }
 colored = "2"
 regex = "1"
-ahash = "0.7"
+ahash = "0.8"
 
 [profile.release]
 strip = true
