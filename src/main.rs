@@ -3,24 +3,24 @@ use std::io::{self, BufRead, BufWriter, Write};
 use std::process::Command;
 
 use ahash::AHashSet as HashSet;
-use clap::{ArgEnum, Parser};
+use clap::{Parser, ValueEnum};
 use colored::Colorize;
 use regex::Regex;
 
 const LOG_FILE: &str = "/var/log/pacman.log";
 
 #[derive(Parser)]
-#[clap(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None)]
 struct Args {
     /// Maximum number of most recent lines to output
-    #[clap(short, long, value_parser, default_value_t = usize::MAX)]
+    #[arg(short, default_value_t = usize::MAX)]
     n: usize,
 
-    #[clap(arg_enum, value_parser, default_value_t = Filter::All)]
+    #[arg(value_enum, default_value_t = Filter::All)]
     filter: Filter,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum Filter {
     A,
     All,
