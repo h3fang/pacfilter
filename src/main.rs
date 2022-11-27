@@ -5,7 +5,6 @@ use std::process::Command;
 use ahash::AHashSet as HashSet;
 use clap::{Parser, ValueEnum};
 use colored::Colorize;
-use regex::Regex;
 
 const LOG_FILE: &str = "/var/log/pacman.log";
 
@@ -59,24 +58,28 @@ fn show_all_logs() {
 
 fn filter_logs(keyword: &str, max_entries: usize) {
     let logs = read_to_string(LOG_FILE).unwrap();
-    let re = Regex::new(&format!(r"^\[(.*)\] \[ALPM\] {keyword} (\S+) (.*)$")).unwrap();
     let lock = io::stdout().lock();
     let mut buf = BufWriter::new(lock);
     logs.lines()
         .rev()
-        .filter_map(|line| re.captures(line))
+        .filter_map(|line| {
+            line.split_once(" [ALPM] ").and_then(|(time, remaining)| {
+                let mut parts = remaining.splitn(3, ' ');
+                parts.next().and_then(|k| {
+                    if k == keyword {
+                        Some((time, parts.next().unwrap(), parts.next().unwrap()))
+                    } else {
+                        None
+                    }
+                })
+            })
+        })
         .take(max_entries)
         .collect::<Vec<_>>()
         .into_iter()
         .rev()
-        .for_each(|caps| {
-            let _ = writeln!(
-                buf,
-                "{} {keyword} {} {}",
-                &caps[1],
-                &caps[2].bright_green(),
-                &caps[3]
-            );
+        .for_each(|(time, pkg, version)| {
+            let _ = writeln!(buf, "{} {keyword} {} {}", time, pkg.bright_green(), version);
         });
 }
 
@@ -94,35 +97,30 @@ fn explicitly_installed(max_entries: usize) {
         .collect::<HashSet<_>>();
 
     let logs = read_to_string(LOG_FILE).unwrap();
-    let re = Regex::new(r"\[(.*)\] \[ALPM\] installed (\S+) (.*)").unwrap();
 
     let lock = io::stdout().lock();
     let mut buf = BufWriter::new(lock);
     logs.lines()
         .rev()
         .filter_map(|line| {
-            re.captures(line).map(|caps| {
-                if explicit_pkgs.contains(&caps[2]) {
-                    explicit_pkgs.remove(&caps[2]);
-                    Some(caps)
-                } else {
-                    None
-                }
-            })
+            line.split_once(" [ALPM] installed ")
+                .and_then(|(time, remaining)| {
+                    remaining.split_once(' ').and_then(|(pkg, version)| {
+                        if explicit_pkgs.contains(pkg) {
+                            explicit_pkgs.remove(pkg);
+                            Some((time, pkg, version))
+                        } else {
+                            None
+                        }
+                    })
+                })
         })
-        .flatten()
         .take(max_entries)
         .collect::<Vec<_>>()
         .into_iter()
         .rev()
-        .for_each(|caps| {
-            let _ = writeln!(
-                buf,
-                "{} installed {} {}",
-                &caps[1],
-                &caps[2].bright_green(),
-                &caps[3]
-            );
+        .for_each(|(time, pkg, version)| {
+            let _ = writeln!(buf, "{} installed {} {}", time, pkg.bright_green(), version);
         });
 }
 
