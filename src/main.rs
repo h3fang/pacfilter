@@ -49,7 +49,10 @@ fn main() {
 fn show_all_logs() {
     let programs = ["nvim", "vim", "bat", "cat"];
     for p in &programs {
-        if Command::new(p).args([LOG_FILE]).status().is_ok() {
+        if let Ok(mut child) = Command::new(p).args([LOG_FILE]).spawn() {
+            child
+                .wait()
+                .unwrap_or_else(|e| panic!("Command {p} failed with error: {e}"));
             return;
         }
     }
