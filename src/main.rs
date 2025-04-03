@@ -93,10 +93,7 @@ fn explicitly_installed(max_entries: usize) {
         .unwrap()
         .stdout
         .lines()
-        .filter_map(|l| match l {
-            Ok(l) => Some(l),
-            Err(_) => None,
-        })
+        .map_while(Result::ok)
         .collect::<HashSet<_>>();
 
     let logs = read_to_string(LOG_FILE).unwrap();
