@@ -106,8 +106,7 @@ fn explicitly_installed(max_entries: usize) {
             line.split_once(" [ALPM] installed ")
                 .and_then(|(time, remaining)| {
                     remaining.split_once(' ').and_then(|(pkg, version)| {
-                        if explicit_pkgs.contains(pkg) {
-                            explicit_pkgs.remove(pkg);
+                        if explicit_pkgs.remove(pkg) {
                             Some((time, pkg, version))
                         } else {
                             None
