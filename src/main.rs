@@ -9,7 +9,8 @@ use colored::Colorize;
 const LOG_FILE: &str = "/var/log/pacman.log";
 
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(version, about, long_about = None)]
+/// A tool to filter pacman log
 struct Args {
     /// Maximum number of most recent lines to output
     #[arg(short, default_value_t = usize::MAX)]
