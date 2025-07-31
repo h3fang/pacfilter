@@ -1,12 +1,13 @@
 use std::fs::read_to_string;
-use std::io::{self, BufRead, BufWriter, Write};
+use std::io::{BufRead, BufWriter, Error, Result, Write};
 use std::process::Command;
 
 use ahash::AHashSet as HashSet;
+use anstyle::{AnsiColor, Color, Style};
 use clap::{Parser, ValueEnum};
-use colored::Colorize;
 
 const LOG_FILE: &str = "/var/log/pacman.log";
+const STYLE: Style = Style::new().fg_color(Some(Color::Ansi(AnsiColor::BrightGreen)));
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -35,7 +36,7 @@ enum Filter {
     Uninstalled,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let args = Args::parse();
 
     match args.filter {
@@ -47,81 +48,95 @@ fn main() {
     }
 }
 
-fn show_all_logs() {
+fn show_all_logs() -> Result<()> {
     let programs = ["nvim", "vim", "bat", "cat"];
     for p in &programs {
         if let Ok(mut child) = Command::new(p).args([LOG_FILE]).spawn() {
-            child
-                .wait()
-                .unwrap_or_else(|e| panic!("Command {p} failed with error: {e}"));
-            return;
+            let s = child.wait()?;
+            if s.success() {
+                return Ok(());
+            } else if let Some(code) = s.code() {
+                let msg = format!("Process {p} exited with status code: {code}");
+                return Err(Error::other(msg));
+            } else {
+                return Err(Error::other(format!("Process {p} terminated by signal")));
+            }
         }
     }
-    eprintln!("None of {:?} worked.", programs);
+    Err(Error::other(format!("None of {programs:?} worked.")))
 }
 
-fn filter_logs(keyword: &str, max_entries: usize) {
-    let logs = read_to_string(LOG_FILE).unwrap();
-    let lock = io::stdout().lock();
-    let mut buf = BufWriter::new(lock);
-    logs.lines()
-        .rev()
-        .filter_map(|line| {
-            line.split_once(" [ALPM] ").and_then(|(time, remaining)| {
-                let mut parts = remaining.splitn(3, ' ');
-                parts.next().and_then(|k| {
-                    if k == keyword {
-                        Some((time, parts.next().unwrap(), parts.next().unwrap()))
-                    } else {
-                        None
+fn filter_logs(keyword: &str, max_entries: usize) -> Result<()> {
+    let logs = read_to_string(LOG_FILE)?;
+
+    let start = STYLE.render();
+    let end = STYLE.render_reset();
+
+    let mut lines = Vec::with_capacity(1024);
+    for line in logs.lines().rev() {
+        if let Some((time, remaining)) = line.split_once(" [ALPM] ") {
+            let mut parts = remaining.splitn(3, ' ');
+            if parts.next() == Some(keyword) {
+                if let Some(pkg) = parts.next()
+                    && let Some(version) = parts.next()
+                {
+                    lines.push((time, pkg, version));
+                    if lines.len() >= max_entries {
+                        break;
                     }
-                })
-            })
-        })
-        .take(max_entries)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .for_each(|(time, pkg, version)| {
-            let _ = writeln!(buf, "{} {keyword} {} {}", time, pkg.bright_green(), version);
-        });
+                } else {
+                    return Err(Error::other(format!("invalid line {line}")));
+                }
+            }
+        }
+    }
+
+    let lock = anstream::stdout().lock();
+    let mut buf = BufWriter::new(lock);
+    for (time, pkg, version) in lines.into_iter().rev() {
+        writeln!(buf, "{time} {keyword} {start}{pkg}{end} {version}")?;
+    }
+
+    Ok(())
 }
 
-fn explicitly_installed(max_entries: usize) {
+fn explicitly_installed(max_entries: usize) -> Result<()> {
     let mut explicit_pkgs = Command::new("pacman")
         .args(["-Qqe"])
-        .output()
-        .unwrap()
+        .output()?
         .stdout
         .lines()
         .map_while(Result::ok)
         .collect::<HashSet<_>>();
 
-    let logs = read_to_string(LOG_FILE).unwrap();
+    let logs = read_to_string(LOG_FILE)?;
 
-    let lock = io::stdout().lock();
+    let start = STYLE.render();
+    let end = STYLE.render_reset();
+
+    let mut lines = Vec::with_capacity(1024);
+    for line in logs.lines().rev() {
+        if let Some((time, remaining)) = line.split_once(" [ALPM] installed ") {
+            if let Some((pkg, version)) = remaining.split_once(' ') {
+                if explicit_pkgs.remove(pkg) {
+                    lines.push((time, pkg, version));
+                    if lines.len() >= max_entries {
+                        break;
+                    }
+                }
+            } else {
+                return Err(Error::other(format!("invalid line {line}")));
+            }
+        }
+    }
+
+    let lock = anstream::stdout().lock();
     let mut buf = BufWriter::new(lock);
-    logs.lines()
-        .rev()
-        .filter_map(|line| {
-            line.split_once(" [ALPM] installed ")
-                .and_then(|(time, remaining)| {
-                    remaining.split_once(' ').and_then(|(pkg, version)| {
-                        if explicit_pkgs.remove(pkg) {
-                            Some((time, pkg, version))
-                        } else {
-                            None
-                        }
-                    })
-                })
-        })
-        .take(max_entries)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .for_each(|(time, pkg, version)| {
-            let _ = writeln!(buf, "{} installed {} {}", time, pkg.bright_green(), version);
-        });
+    for (time, pkg, version) in lines.into_iter().rev() {
+        writeln!(buf, "{time} installed {start}{pkg}{end} {version}")?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

@@ -10,8 +10,9 @@ name = "pf"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
-colored = "3"
+clap = { version = "4.5", features = ["derive"] }
+anstyle = "1.0"
+anstream = "0.6"
 ahash = "0.8"
 
 [profile.release]
