@@ -19,3 +19,4 @@ ahash = "0.8"
 strip = true
 lto = true
 codegen-units = 1
+panic = "abort"
