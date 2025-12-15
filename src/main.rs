@@ -51,7 +51,7 @@ fn main() -> Result<()> {
 fn show_all_logs() -> Result<()> {
     let programs = ["nvim", "vim", "bat", "cat"];
     for p in &programs {
-        if let Ok(mut child) = Command::new(p).args([LOG_FILE]).spawn() {
+        if let Ok(mut child) = Command::new(p).arg(LOG_FILE).spawn() {
             let s = child.wait()?;
             if s.success() {
                 return Ok(());
